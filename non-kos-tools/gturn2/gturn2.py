@@ -1,141 +1,243 @@
 # ----------------------------------------------------------------
+# Gravity Turn Maneuver computation server for kOS-equipped
+# Kerbal Space Program
+#
+# Based on:
 # Gravity Turn Maneuver with direct multiple shooting using CVodes
 # (c) Mirko Hahn
-#
-# downloaded from:
-#   https://mintoc.de/index.php/Gravity_Turn_Maneuver_(Casadi)
+# https://mintoc.de/index.php/Gravity_Turn_Maneuver_(Casadi)
 # ----------------------------------------------------------------
-import casadi as cs
- 
-# Artificial model parameters
-N = 300                   # Number of shooting intervals
-vel_eps = 1e-6            # Initial velocity (km/s)
- 
-# Vehicle parameters
-m0   = 11.3               # Launch mass (t)
-m1   = 1.3                # Dry mass (t)
-g0   = 9.81e-3            # Gravitational acceleration at altitude zero (km/s^2)
-r0   = 6.0e2              # Radius at altitude zero (km)
-Isp  = 300.0              # Specific impulse (s)
-Fmax = 600.0e-3           # Maximum thrust (MN)
- 
-# Atmospheric parameters
-cd  = 0.021                        # Drag coefficients
-A   = 1.0                          # Reference area (m^2)
-H   = 5.6                          # Scale height (km)
-rho = (1.0 * 1.2230948554874)      # Density at altitude zero
- 
-# Target orbit parameters
-h_obj = 75                # Target altitude (km)
-v_obj = 2.287             # Target velocity (km/s)
-q_obj = 0.5 * cs.pi          # Target angle to vertical (rad)
- 
-# Create symbolic variables
-x = cs.SX.sym('[m, v, q, h, d]')      # Vehicle state
-u = cs.SX.sym('u')                    # Vehicle controls
-T = cs.SX.sym('T')                    # Time horizon (s)
- 
-# Introduce symbolic expressions for important composite terms
-Fthrust = Fmax * u
-Fdrag   = 0.5e3 * A * cd * rho * cs.exp(-x[3] / H) * x[1]**2
-r       = x[3] + r0
-g       = g0 * (r0 / r)**2
-vhor    = x[1] * cs.sin(x[2])
-vver    = x[1] * cs.cos(x[2])
- 
-# Build symbolic expressions for ODE right hand side
-mdot = -(Fmax / (Isp * g0)) * u
-vdot = (Fthrust - Fdrag) / x[0] - g * cs.cos(x[2])
-hdot = vver
-ddot = vhor / r
-qdot = g * cs.sin(x[2]) / x[1] - ddot
- 
-# Build the DAE function
-ode = [
-    mdot,
-    vdot,
-    qdot,
-    hdot,
-    ddot
-]
-quad = u
-dae = cs.SXFunction("dae", cs.daeIn(x=x, p=cs.vertcat([u, T])), cs.daeOut(ode=T * cs.vertcat(ode), quad=T * quad))
-I = cs.Integrator("I", "cvodes", dae, {'t0': 0.0, 'tf': 1.0 / N})
- 
-# Specify upper and lower bounds as well as initial values for DAE parameters,
-# states and controls
-p_min  = [120.0]
-p_max  = [600.0]
-p_init = [120.0]
- 
-u_min  = [0.0]
-u_max  = [1.0]
-u_init = [0.5]
- 
-x0_min  = [m0, vel_eps,          0.0, 0.0, 0.0]
-x0_max  = [m0, vel_eps,  0.5 * cs.pi, 0.0, 0.0]
-x0_init = [m0, vel_eps, 0.05 * cs.pi, 0.0, 0.0]
- 
-xf_min  = [m1, v_obj, q_obj, h_obj,    0.0]
-xf_max  = [m0, v_obj, q_obj, h_obj, cs.inf]
-xf_init = [m1, v_obj, q_obj, h_obj,    0.0]
- 
-x_min  = [m1,     vel_eps,         0.0,         0.0,              0.0]
-x_max  = [m0,      cs.inf,       cs.pi,      cs.inf,           cs.inf]
-x_init = [0.5 * (m0 + m1), 0.5 * v_obj, 0.5 * q_obj, 0.5 * h_obj, 0.0]
- 
-# Useful variable block sizes
-np = 1                         # Number of parameters
-nx = x.size1()                 # Number of states
-nu = u.size1()                 # Number of controls
-ns = nx + nu                   # Number of variables per shooting interval
- 
-# Introduce symbolic variables and disassemble them into blocks
-V = cs.MX.sym('X', N * ns + nx + np)
-P = V[0]
-X = [V[(np + i * ns):(np + i * ns + nx)] for i in range(0, N + 1)]
-U = [V[(np + i * ns + nx):(np + (i + 1) * ns)] for i in range(0, N)]
- 
-# Nonlinear constraints and Lagrange objective
-G = []
-F = 0.0
- 
-# Build DMS structure
-x0 = p_init + x0_init
-for i in range(0, N):
-    Y = I({'x0': X[i], 'p': cs.vertcat([U[i], P])})
-    G += [Y['xf'] - X[i + 1]]
-    F = F + Y['qf']
- 
-    frac = float(i + 1) / N
-    x0 = x0 + u_init + [x0_init[i] + frac * (xf_init[i] - x0_init[i]) for i in range(0, nx)]
- 
-# Lower and upper bounds for solver
-lbg = 0.0
-ubg = 0.0
-lbx = p_min + x0_min + u_min + (N-1) * (x_min + u_min) + xf_min
-ubx = p_max + x0_max + u_max + (N-1) * (x_max + u_max) + xf_max
- 
-# Solve the problem using IPOPT
-nlp = cs.MXFunction("nlp", cs.nlpIn(x=V), cs.nlpOut(f=m0 - X[-1][0], g=cs.vertcat(G)))
-S = cs.NlpSolver("S", "ipopt", nlp, {'tol': 1e-5, 'print_level': 5})
-r = S({
-    'x0': x0,
-    'lbx': lbx,
-    'ubx': ubx,
-    'lbg': lbg,
-    'ubg': ubg
-})
- 
-# Extract state sequences and parameters from result
-x = r['x']
-f = r['f']
-T = x[0]
- 
-t = [i * (T / N) for i in range(0, N+1)]
-m = x[np     ::ns].get()
-v = x[np + 1 ::ns].get()
-q = x[np + 2 ::ns].get()
-h = x[np + 3 ::ns].get()
-d = x[np + 4 ::ns].get()
-u = x[np + nx::ns].get() + [0.0]
+import sys
+import os
+import os.path as pth
+import time
+import logging
+import multiprocessing as mp
+import argparse
+import textwrap
+
+import koson as ks
+import _gturn as gt
+
+
+class Logger(object):
+    def __init__(self, level, name):
+        self.level = level
+        self.logger = logging.getLogger(name)
+
+    def write(self, message):
+        for m in message.splitlines():
+            self.logger.log(self.level, m)
+
+
+def gturn_wrapper(name, **kwargs):
+    sout = sys.stdout
+    serr = sys.stderr
+    sys.stdout = Logger(logging.DEBUG, 'gturn-' + name)
+    sys.stderr = Logger(logging.INFO, 'gturn-' + name)
+    res = gt.compute_gravity_turn(**kwargs)
+    sys.stdout = sout
+    sys.stderr = serr
+    return res
+
+
+def scan_tasks(directory, skip_tasks):
+    logging.debug('Scanning master directory %s', directory)
+    ilock = 'input.lock'
+    idata = 'input.json'
+    odata = 'output.json'
+    tasks = []
+    for d in os.listdir(directory):
+        tskdir = pth.join(directory, d)
+        logging.debug('Scanning %s', tskdir)
+        if not pth.isdir(tskdir):
+            logging.debug('Skipping because %s is not a directory.', tskdir)
+            continue
+        if d in skip_tasks:
+            logging.debug('Skipping because %s is among skip tasks.', d)
+            continue
+        lockfile = pth.join(tskdir, ilock)
+        if pth.isfile(lockfile):
+            logging.debug('Skipping because lock file %s exists.', lockfile)
+            continue
+        datfile = pth.join(tskdir, idata)
+        if not pth.isfile(datfile):
+            logging.debug('Skipping because %s does not exist or is not '
+                          'a file.', datfile)
+            continue
+        outfile = pth.join(tskdir, odata)
+        if pth.isfile(odata):
+            logging.debug('Skipping because result file %s already.', outfile)
+            continue
+        with open(pth.join(tskdir, idata), mode='r') as f:
+            data = ks.load(f)
+            logging.debug('Loaded data: %s', str(data))
+            tasks.append((d, data))
+    return tasks
+
+
+def write_result(directory, name, result):
+    olock = 'output.lock'
+    odata = 'output.json'
+    tskdir = pth.join(directory, name)
+    ofile = pth.join(tskdir, odata)
+    lockfile = pth.join(tskdir, olock)
+    logging.debug('Writing result of task %s', name)
+    logging.debug('Writing lock file %s', lockfile)
+    with open(lockfile, mode='w') as f:
+        f.write('')
+    logging.debug('Writing results file %s', ofile)
+    with open(ofile, mode='w') as f:
+        ks.dump(result, f)
+    logging.debug('Removing lock file %s', lockfile)
+    os.unlink(lockfile)
+    logging.debug('Done.')
+
+
+class SwitchPool(object):
+    class SyncResult(object):
+        def __init__(self, r):
+            self.r = r
+
+        def ready(self):
+            return True
+
+        def get(self):
+            return self.r
+
+    def __init__(self, async, processes):
+        if async:
+            self.pool = mp.Pool(processes=processes)
+        self.async = async
+
+    def apply(self, func, args=(), kwds=()):
+        if self.async:
+            return self.pool.apply_async(func, args=args, kwds=kwds)
+        else:
+            return SwitchPool.SyncResult(func(*args, **kwds))
+
+
+def run(async, directory):
+    logging.info('Starting gravity turn computation server. async=%s', async)
+    logging.info('Watching directory: %s', directory)
+    pool = SwitchPool(async, processes=1)
+    running_tasks = dict()
+    while True:
+        logging.debug('Watching cycle start.')
+        tasks = scan_tasks(directory, running_tasks)
+        for name, data in tasks:
+            running_tasks[name] = pool.apply(gturn_wrapper, args=(name,),
+                                             kwds=data)
+        for name, res in running_tasks.items():
+            if res.ready():
+                write_result(directory, name, res.get())
+                del running_tasks[name]
+        time.sleep(1)
+        logging.debug('Watching cycle end.')
+        break
+
+
+def process(infile, outfile):
+    print 'Processing file {}.'.format(infile)
+    data = None
+    with open(infile, mode='r') as f:
+        data = js.load(f)
+    if data is None:
+        print 'Data could not be loaded. Exitting.'
+        return
+
+    print 'Computing gravity turn...'
+    res = gt.compute_gravity_turn(**data)
+    print 'Computation finished.'
+
+    print 'Writing results to {}'.format(outfile)
+    with open(outfile, mode='w') as f:
+        js.dump(res, f)
+    print 'Results written.'
+
+
+def main(async):
+    logging.basicConfig(level=logging.DEBUG)
+    epilog = '''
+    RUN MODES
+
+    The program can run in three modes: server-sync, server-async and direct.
+
+    Modes server-sync, server-async
+
+    Both of these modes have the same logic and their difference is explained at
+    the end of this section. Both of these modes can be called server modes.
+
+    In a server mode the program periodically checks the given directory for
+    input data files. Whenever it detects a ready data file it loads it and
+    dispatches a computation task to compute a gravity turn based on the data
+    loaded from the file. The result is written to the corresponding file. In
+    this mode the program runs until manually interrupted (e.g. by Ctrl+C).
+
+    The monitored directory is expected to contain subdirectories, one for each
+    computation (let's call these "task dirs"). A task dir can contain these
+    files:
+        * input.json  - input data file in JSON format
+        * input.lock  - if this file exists (can be empty) the program won't try
+                        to load the input.json file
+        * output.json - result of the computation in JSON format; if this file
+                        exists (even if it is empty) the program won't try to
+                        load the input.json file (to prevent multiple
+                        computations of the same thing); this file is written by
+                        this program
+        * output.lock - if this file exists it is not safe to read the
+                        output.json file; this file is written and deleted by
+                        this program
+    The output data and lock (output.json and output.lock) are written into the
+    same task dir where the corresponding input.json was located.
+
+    The difference between server-sync and server-async is that in sync mode the
+    computations are performed synchronously, i.e. when a valid input data file
+    is detected it is loaded and processed and only after the computation is
+    finished and the result is written the monitoring resumes. In async mode the
+    input data files are read as they come and the computations are dispatched
+    as asynchronous tasks in their own processes, i.e. two computations can run
+    concurently (if properly configured).
+
+    Direct mode
+
+    In direct mode the program loads the given input data file, computes the
+    gravity turn and writes the result to the given output data file and then
+    exits. In contrast to the server mode, in direct mode the file is always
+    loaded and the result is always written, no locks are checked.
+    '''
+    ap = argparse.ArgumentParser(prog='gturn.py',
+                                 description='Utility for computing gravity '
+                                             'turns.',
+                                 epilog=textwrap.dedent(epilog),
+                                 formatter_class=argparse.RawTextHelpFormatter)
+    ap.add_argument('-m', '--mode',
+                    nargs=1,
+                    choices=['server-sync', 'server-async', 'direct'],
+                    default='server',
+                    required=False,
+                    help='Specifies the mode the program will run in. See '
+                         'information about run modes. Default is server-sync '
+                         'mode.')
+    ap.add_argument('-t', '--target',
+                    nargs=1,
+                    required=True,
+                    help='If in server mode, the path specifies the monitored '
+                         'directory. If in direct mode, the path specifies the '
+                         'input data file.')
+    ap.add_argument('-o', '--output',
+                    nargs=1,
+                    help='If in direct mode, the result will be written to the '
+                         'given file. Ignored for server mode.')
+    args = ap.parse_args()
+    if args.mode[0] in ['server-sync', 'server-async']:
+        run(args.mode[0] == 'server-async', args.target[0])
+    elif args.mode[0] == 'direct':
+        if args.output is None:
+            print 'No output file specified for direct mode. Exitting.'
+            return
+        process(args.target[0], args.output[0])
+
+
+if __name__ == '__main__':
+    main(False)
