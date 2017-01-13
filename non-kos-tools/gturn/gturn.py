@@ -7,17 +7,17 @@
 # (c) Mirko Hahn
 # https://mintoc.de/index.php/Gravity_Turn_Maneuver_(Casadi)
 # ----------------------------------------------------------------
-import sys
-import os
-import os.path as pth
-import time
+import argparse
 import logging
 import multiprocessing as mp
-import argparse
+import os
+import os.path as pth
+import sys
 import textwrap
+import time
 
-import koson as ks
 import _gturn as gt
+import koson as ks
 
 
 class Logger(object):
@@ -35,9 +35,11 @@ def gturn_wrapper(name, **kwargs):
     serr = sys.stderr
     sys.stdout = Logger(logging.DEBUG, 'gturn-' + name)
     sys.stderr = Logger(logging.INFO, 'gturn-' + name)
-    res = gt.compute_gravity_turn(**kwargs)
-    sys.stdout = sout
-    sys.stderr = serr
+    try:
+        res = gt.compute_gravity_turn(**kwargs)
+    finally:
+        sys.stdout = sout
+        sys.stderr = serr
     return res
 
 
@@ -76,7 +78,9 @@ def scan_tasks(directory, skip_tasks):
     return tasks
 
 
-def write_result(directory, name, result):
+def write_result(directory, name, result, indent):
+    if indent:
+        indent = 2
     olock = 'output.lock'
     odata = 'output.json'
     tskdir = pth.join(directory, name)
@@ -88,7 +92,7 @@ def write_result(directory, name, result):
         f.write('')
     logging.debug('Writing results file %s', ofile)
     with open(ofile, mode='w') as f:
-        ks.dump(result, f)
+        ks.dump(result, f, indent=indent)
     logging.debug('Removing lock file %s', lockfile)
     os.unlink(lockfile)
     logging.debug('Done.')
@@ -117,7 +121,7 @@ class SwitchPool(object):
             return SwitchPool.SyncResult(func(*args, **kwds))
 
 
-def run(async, directory):
+def run(async, directory, indent):
     logging.info('Starting gravity turn computation server. async=%s', async)
     logging.info('Watching directory: %s', directory)
     pool = SwitchPool(async, processes=1)
@@ -130,33 +134,38 @@ def run(async, directory):
                                              kwds=data)
         for name, res in running_tasks.items():
             if res.ready():
-                write_result(directory, name, res.get())
+                write_result(directory, name, res.get(), indent)
                 del running_tasks[name]
         time.sleep(1)
         logging.debug('Watching cycle end.')
         break
 
 
-def process(infile, outfile):
-    print 'Processing file {}.'.format(infile)
-    data = None
+def process(infile, outfile, indent):
+    if indent:
+        indent = 2
+    logging.info('Processing file {}.'.format(infile))
     with open(infile, mode='r') as f:
-        data = js.load(f)
+        data = ks.load(f)
     if data is None:
-        print 'Data could not be loaded. Exitting.'
+        logging.error('Data could not be loaded. Exitting.')
         return
 
-    print 'Computing gravity turn...'
-    res = gt.compute_gravity_turn(**data)
-    print 'Computation finished.'
+    logging.debug('Computing gravity turn...')
+    res = gturn_wrapper('processor', **data)
+    logging.debug('Computation finished.')
 
-    print 'Writing results to {}'.format(outfile)
-    with open(outfile, mode='w') as f:
-        js.dump(res, f)
-    print 'Results written.'
+    if outfile is None:
+        logging.debug('Writing results to stdout')
+        ks.dump(res, sys.stdout, indent=indent)
+    else:
+        logging.debug('Writing results to %s', outfile)
+        with open(outfile, mode='w') as f:
+            ks.dump(res, f, indent=indent)
+    logging.info('Results written.')
 
 
-def main(async):
+def main():
     logging.basicConfig(level=logging.DEBUG)
     epilog = '''
     RUN MODES
@@ -219,6 +228,25 @@ def main(async):
                     help='Specifies the mode the program will run in. See '
                          'information about run modes. Default is server-sync '
                          'mode.')
+
+    def check_processes(x):
+        try:
+            x = int(x)
+            if x <= 0:
+                raise ValueError()
+            return x
+        except ValueError:
+            raise argparse.ArgumentTypeError('Number of processes must be an '
+                                             'integer greater than 0.')
+    ap.add_argument('-p', '--processes',
+                    nargs=1,
+                    required=False,
+                    default=1,
+                    type=check_processes,
+                    help='Specifies the number of simultaneous computation '
+                         'processes (not counting the main process scanning '
+                         'the directory) that can run concurrently. Must be '
+                         'greater than 0. Default is 1.')
     ap.add_argument('-t', '--target',
                     nargs=1,
                     required=True,
@@ -228,16 +256,22 @@ def main(async):
     ap.add_argument('-o', '--output',
                     nargs=1,
                     help='If in direct mode, the result will be written to the '
-                         'given file. Ignored for server mode.')
+                         'given file. If not present, the result will be '
+                         'printed to the standard output. Ignored for server '
+                         'mode.')
+    ap.add_argument('-i', '--indent',
+                    action='store_true',
+                    help='If specified, the output files (regardless of the '
+                         'mode or the destination file) will be indented.')
     args = ap.parse_args()
     if args.mode[0] in ['server-sync', 'server-async']:
-        run(args.mode[0] == 'server-async', args.target[0])
+        run(args.mode[0] == 'server-async', args.target[0], args.indent)
     elif args.mode[0] == 'direct':
         if args.output is None:
-            print 'No output file specified for direct mode. Exitting.'
-            return
-        process(args.target[0], args.output[0])
+            process(args.target[0], None, args.indent)
+        else:
+            process(args.target[0], args.output[0], args.indent)
 
 
 if __name__ == '__main__':
-    main(False)
+    main()
