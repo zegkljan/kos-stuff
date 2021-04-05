@@ -1,0 +1,1003 @@
+% HOW TO COMPILE
+% using latest distribution of TeXLive, just run luatex -fmt optex math
+
+% the macros used in this document are heavily inspired by https://github.com/olsak/CTUstyle3/
+
+\useOpTeX % Use OpTeX format
+
+%%% Appendicies
+\newcount\appnum
+\def\appletter{\ifcase\appnum ?\or A\or B\or C\or D\or E\or F\or G\or H\or
+   I\or J\or K\or L\or M\or N\or O\or P\or Q\or R\or S\or T\or U\or V\or
+   W\or X\or Y\or Z\else ?\fi}
+
+\optdef\app[]{\_trylabel\_scantoeol\inapp}
+
+\def\inapp #1{\_par \_sectionlevel=1
+   \global\advance\appnum by1
+   \_def \_savedtitle {#1}% saved to .ref file
+   \_secnum=0 \_seccnum=0 \_relax
+   \_xdef \_therefnum {\appletter}\_global\_let\_thechapnum=\_therefnum
+   \_gdef\_thesecnum{\appletter.\_the\_secnum}
+   \_gdef\_theseccnum{\appletter.\_the\_secnum.\_the\_seccnum}
+   \printapp{\_scantextokens{#1}}%
+   \_resetnonumnotoc
+}
+\def\_printchap#1{\_vfill\_supereject
+    \_vglue\_medskipamount % shifted by topkip+\medskipamount
+    {\_chapfont\_noindent\_ifnonum\_printrefnum[@]\_else\_mtext{chap} \_printrefnum[@]\_fi\_par
+     \_nobreak\_smallskip
+     \_noindent\_raggedright#1\_nbpar}\_mark{}%
+    \_nobreak\_belowtitle{\_bigskip}%
+    \_firstnoindent
+}
+\def\printapp#1{\_vfill\_supereject
+    \_vglue\_medskipamount % shifted by topkip+\medskipamount
+    {\_chapfont\_noindent\_ifnonum\_else Appendix \_printrefnum[@]\_fi\_par
+     \_nobreak\_smallskip
+     \_noindent\_raggedright#1\_nbpar}\_mark{}%
+    \_nobreak\_belowtitle{\_bigskip}%
+    \_firstnoindent
+}
+\def\bibchap{\nonum \_inchap{References}}
+
+%%% Numbering
+
+\addto \_chapx {\_tnum=0 \_fnum=0 \_dnum=0 \_resetABCDE }
+\def   \_secx  {\_seccx \_seccnum=0 }
+\def\_thednum{(\_thechapnum.\_the\_dnum)}
+
+\def\_thetnum{\_thechapnum.\_the\_tnum}
+
+%%% Hyperlinks
+
+\hyperlinks \Blue \Green
+
+%%% Soft page break
+\def\maybebreak #1 {\vskip0pt plus #1\penalty-120 \vskip0pt plus-#1\relax}
+
+%%% Misc shortcuts
+
+\def\d #1 {\,{\rm d}#1 }
+\def\dd {{\rm d}}
+\def\h #1 {{\noindent\bf #1}}
+\def\br {\hfil\break}
+\def\dt {\,{\rm d}t}
+\def\dxi {\,{\rm d}\xi}
+\def\note #1 {\vskip4pt\noindent{\bf #1.~}}
+
+%%% PDF info data
+\def\pdfinfodata{%
+   \def\infolist{}%
+   \def\addinfo##1##2{\_pdfunidef\tmpb{##2}\edef\infolist{\infolist ##1\tmpb}}%
+   \ifx\hexprint\undefined
+      \def\addinfo##1##2{\_pdfunidef\tmpb{##2}\edef\infolist{\infolist ##1(\tmpb)}}%
+   \fi
+   \addinfo{/Title}{\title}%
+   \addinfo{/Author}{\author}%
+   \pdfinfo{\infolist}%
+}
+
+%\showlabels
+
+\fontfam[LM Fonts]
+
+%%% start document
+
+\def\title{Calculating a suicide burn}
+\def\author{Jan Žegklitz}
+
+% PDF info
+\pdfinfodata
+
+\insertoutline{Title page}
+
+\tit \title
+\hbox to\hsize{\hfil \_seccfont rev. 0 \hfil}
+\bigskip
+\hbox to\hsize{\hfil \author \hfil}
+\hbox to\hsize{\hfil \tt zegkljan@gmail.com \hfil}
+\vfill
+\hbox to\hsize{\hfil\bf Abstract \hfil}
+\medskip
+{
+    \leftskip=0.1\hsize
+    \rightskip=0.1\hsize
+    \noindent
+    This ``paper'' describes a direct solution to a suicide burn where the changing mass of the vehicle is taken into account.
+    The problem is split into two phases -- free fall before engine ignition, and engine breaking phase.
+    Those two phases are described and ``solved'' separately.
+    Then, they are ``glued'' together and turned into a system of equations that is solved.
+    The solution is far from perfect, as can be seen in the video linked at the end of the ``paper'' but a good first step.
+    \par
+}
+\vfill
+\hbox to\hsize{\hfil\bf Changelog \hfil}
+\medskip
+\hbox to\hsize{
+    \table{|c|c|c|}{
+        \crl
+        revision & date          & changes \crl
+        0        & April 5, 2021 & initial version \crl
+    }
+}
+\medskip
+\centerline{Source of this document can be found at}
+\centerline{\url{https://github.com/zegkljan/kos-stuff/blob/master/misc/suicide-burn/suicide-burn.tex}}
+\vfill\break
+
+\insertoutline{Table of Contents}
+\nonum\notoc\sec Table of Contents
+\maketoc
+\outlines3
+
+\chap[chap:intro] Introduction
+This ``paper'' describes my ``journey'' (which is still not finished) at solving the problem of calculating a good suicide burn.
+At the beginning of things, I just wanted to implement a suicide burn calculator in my kOS \cite[kos] experiments.
+As I'm a lazy person, I wanted to just find the thing on the Internet but even after a lot of searching I was not satisfied.
+None of the solutions I found was considering the changing mass of the vehicle due to consumed propellant, or they were not ``nice'' solutions.
+Therefore I braced myself and went to derive my own solution.
+
+This ``paper'' started just as a random place for me to have all the math nicely typeset in one place.
+But as I was writing it, I thought why not make it into something someone else might possibly take advantage of.
+So, it evolved into` this small ``paper''.
+I might not have solved the problem as well as I thought I would when I started (see the last two chapters) but I have learned a lot of things going through the process.
+As the saying goes, the journey is more important than the destination.
+
+Since I'm a PhD candidate (in a totally unrelated field, this is all just a hobby), I'm quite used to scientific writing so this ``paper'' is written in a scientific--ish style.
+For this reason, from now on I use ``we'' instead of ``I'' as it is just more natural to write like this for me... us.
+
+\sec Goals and limitations
+The goal of this ``paper'' is to derive the formulas and equations that can be used to execute a proper suicide burn.
+By ``proper'' we mean that the change in the mass of the vessel is accounted for.
+On the other hand, some things remain simplified, namely
+\begitems
+    * drag is neglected,
+    * only vertical motion is assumed,
+    * gravitational acceleration is assumed constant (i.e. the whole situation happens relatively close to the surface), and
+    * only Newtonian physics, no relativity (which is not really an issue unless we are trying to land ``on'' a black hole).
+\enditems
+
+\sec Suicide burn
+Suicide burn (or hoverslam, as SpaceX likes to call it) is a maneuver where the vessel ignites its engine(s) at the right moment such that it reaches zero velocity exactly when it reaches zero altitude (or any other desired altitude).
+It is called ``suicide'' burn because if there is any failure that results into not having the thrust available, the vessel inevitably crashes into the ground unless a reserve was accounted for.
+
+\sec The situation
+The whole situation can be split into two phases.
+In the first phase, the vessel is in free fall and the only force acting on it is the gravity.
+In the second phase, the vessel has its engines burning, therefore the force of gravity is counteracted by the thrust.
+The time of transition from phase 1 to phase 2, or, in other words, when to ignite the engine(s), is is the information we are trying to find out.
+
+\sec Approach to the solution
+We will derive equations describing the two phases separately.
+Then we will put these equations together and solve them for the case when the final velocity and altitude are zero.
+This should give us the time of transition between these two phases, i.e. when should we ignite our engines.
+
+\note {Note on notation}
+Since we are considering vertical motion only, we will use only scalars, no vectors.
+However, we still need to discriminate between upwards and downwards.
+Therefore, all positions above the ground are positive (and below are negative) and all directions upwards (i.e. away from the central body) are positive (and downwards are negative).
+
+
+\chap Free fall
+During free fall, the engines are shut down and therefore the mass of the vessel does not change.
+The only force acting on the vessel is gravity.
+
+\sec Mass
+In free fall, the mass of the vessel does not change.
+This can be described as
+$$
+\dot{m}(t) = 0
+$$
+This can simply be integrated
+$$
+m(t) = m(t_0) = m_0
+$$
+where $t_0$ is the initial time and $m(t_0) = m_0$ is the mass of the vessel at that time (initial mass).
+
+\sec Equation of motion
+We use Newton's second law:
+$$
+m(t) \ddot{x}(t) = F \eqmark[eq:newton]
+$$
+Since there is only gravity, we can derive the total acceleration like this
+$$
+\eqalignno{
+    m(t) \ddot{x}(t) &= m(t) g & \eqmark \cr
+    \ddot{x}(t) &= g & \eqmark[eq:ff:motion]
+}
+$$
+where $x(t)$ is the distance from the centre of the central body.
+
+\sec[sec:ff-solving] Solving the equation
+Equation~\ref[eq:ff:motion] can be integrated to get the velocity $\dot{x}(t)$
+$$
+\eqalignno{
+    \int \ddot{x}(t) \dt &= g \int \dt \cr
+    \dot{x}(t) &= gt + C_1 & \eqmark[eq:ff:v-raw]
+}
+$$
+This describes all the solutions to the equation.
+To get the one we are interested in, we have to plug in our initial conditions.
+We start at time $t_0$ and our initial velocity $\dot{x}(t_0) = v_0$.
+We plug these two values into the Equation~\ref[eq:ff:v-raw] and solve for $C_1$.
+$$
+\eqalignno{
+    v_0 &= gt_0 + C_1 \cr
+    C_1 &= v_0 - gt_0 \cr
+}
+$$
+Plugging this back into Equation~\ref[eq:ff:v-raw] we get
+$$
+\dot{x}(t) = gt + v_0 - gt_0 = v_0 + g ( t - t_0 )
+$$
+To get the position $x(t)$, we just integrate again.
+$$
+\eqalignno{
+    \int \dot{x}(t) \dt &= \int ( v_0 + g ( t - t_0 ) ) \dt \cr
+    x(t) &= v_0t + { gt^2 \over 2 } - gt_0t + C_2 \cr
+    x(t) &= v_0t + { gt \over 2 } ( t - t_0 ) + C_2 & \eqmark[eq:ff:x-raw] \cr
+}
+$$
+Again, we solve for the constant $C_2$ to get the particular solution.
+To do that, we have to introduce $x(t_0) = x_0$, i.e. the initial position at $t_0$.
+$$
+\eqalignno{
+    x_0 &= v_0t_0 + { gt_0 \over 2 } ( t_0 - t_0 ) + C_2 \cr
+    C_2 &= x_0 - v_0t_0 \cr
+}
+$$
+Plugging this back into Equation~\ref[eq:ff:x-raw] we get
+$$
+x(t) = v_0t + { gt \over 2 } ( t - t_0 ) + x_0 - v_0t_0 = x_0 + v_0 ( t - t_0 ) + { gt \over 2 } ( t - t_0 )
+$$
+which is our final equation describing the position of the vessel during free fall.
+
+\sec Summary
+To put everything into one place, let's summarize all the equations we have.
+Also, we put an index $F$ everywhere in order to make it absolutely clear we describe the free fall situation.
+$$
+\eqalignno{
+    m_F(t) &= m_{0_F} & \eqmark[eq:ff:m] \cr
+    \ddot{x}_F(t) &= g_F & \eqmark[eq:ff:a] \cr
+    \dot{x}_F(t) &= v_{0_F} + g_F ( t - t_{0_F} ) & \eqmark[eq:ff:v] \cr
+    x_F(t) &= x_{0_F} + v_{0_F} ( t - t_{0_F} ) + { g_F t \over 2 } ( t - t_{0_F} ) & \eqmark[eq:ff:x]
+}
+$$
+where $x_{0_F}$ is the initial position,
+$v_{0_F}$ is the initial velocity,
+$t_{0_F}$ is the time of start of the free fall, and
+$g_F$ is the gravitational acceleration.
+Equation~\ref[eq:ff:m] describes the mass,
+Equation~\ref[eq:ff:a] describes the acceleration,
+Equation~\ref[eq:ff:v] describes the velocity, and
+Equation~\ref[eq:ff:x] describes the position.
+
+\chap Under thrust
+Now we focus on the situation when the engine is burning and pushing against the gravity.
+
+\sec[sec:thr-mass] Mass
+As the engine is burning the propellant is turned into exhaust gas which is pushed out of the nozzle.\fnote{
+    We assume a single engine.
+    If needed, multiple engines can be replaced by a single equivalent engine.
+}
+This means that the vessel is losing mass.
+So, let's start by describing how the mass changes.
+We assume that the flow of the propellant into the engine and the burning rate is constant throughout the whole maneuver.
+$$
+\dot{m}(t) = -R \eqmark[eq:thr:mass-change]
+$$
+where $R$ is the mass--flow rate, expressed in $\rm kg \cdot s^{-1}$.
+Since we know how the mass changes, we can derive the mass $m$ at arbitrary time $t$.
+Equation~\ref[eq:thr:mass-change] is separable and also already separated, so can just simply integrate both sides to get mass.
+$$
+\eqalignno{
+    \dot{m}(t) &= -R \cr
+    \int \dot{m}(t) \d{t} &= -R \int \d{t} \cr
+    m(t) &= -R t + C_1 & \eqmark[eq:thr:m-raw] \cr
+}
+$$
+To get the value of $C_1$, we substitute the initial time $t_0$ (i.e. the time the engine was ignited) for $t$ and $m_0$ for $m(t_0)$ (i.e. the mass of the vehicle when the engine was ignited) and solve for $C_1$.
+$$
+\eqalignno{
+    m_0 &= -R t_0 + C_1 \cr
+    C_1 &= m_0 + R t_0 \cr
+}
+$$
+Substituting this back to Equation~\ref[eq:thr:m-raw], we get the complete expression for mass
+$$
+m(t) = m_0 - R (t - t_0) \eqmark[eq:thr:mass]
+$$
+
+\sec Equation of motion
+As in the free fall situation, we start with Newton's second law (see Equation \ref[eq:newton]).
+The force acting on the vessel is, again, gravity, but this time also the thrust produced by the engine.
+So, we will take Equation~\ref[eq:ff:a] (drop the $F$ index) and add an extra term describing the thrust (see e.g. \cite[varmass] for derivation of this term):
+$$
+\ddot{x}(t) = g - c { \dot{m}(t) \over m(t) } \eqmark[eq:thr:motion]
+$$
+where $c$ is the magnitude of exhaust velocity vector relative to the vessel (we assume the exhaust velocity vector is parallel to the vessel's velocity vector), expressed in $\rm m \cdot s^{-1}$.
+
+\sec Solving the equation
+We use the same approach as in previous chapter, i.e. integrate both sides.
+$$
+\eqalignno{
+    \int \ddot{x}(t) \dt &= g \int \dt - c \int { \dot{m}(t) \over m(t) } \dt & \eqmark[eq:thr:motion-int] \cr
+    \dot{x}(t) &= g t - c \ln m(t) + C_1 & \eqmark[eq:thr:v-raw]\cr
+}
+$$
+For workout of the rightmost integral in Equation~\ref[eq:thr:motion-int] see Section~\ref[sec:wo:thr-motion-integral].
+Again, solve for $C_1$ using $\dot{x}(t_0) = v_0$.
+$$
+\eqalignno{
+    v_0 &= g t_0 - c \ln m_0 + C_1 \cr
+    C_1 &= v_0 - g t_0 + c \ln m_0 \cr
+}
+$$
+Plugging this back into \ref[eq:thr:v-raw] we get the equation for velocity.
+$$
+\eqalignno{
+    \dot{x}(t) &= g t - c \ln m(t) + v_0 - g t_0 + c \ln m_0 \cr
+    \dot{x}(t) &= v_0 + g ( t - t_0 ) + c \ln { m_0 \over m(t) } \cr
+}
+$$
+To get the equation for position, we integrate yet again.
+$$
+\eqalignno{
+    \int \dot{x}(t) \dt &= v_0 \int \dt + g \int ( t - t_0 ) \dt + c \int \ln { m_0 \over m(t) } \dt & \eqmark[eq:thr:v-int] \cr
+    x(t) &= v_0 t + g \left( { t^2 \over 2 } - t_0t \right) + c \left( t \ln m_0 + { m(t) ( \ln m(t) - 1 ) \over R } + C_2 \right) \cr
+}
+$$
+For workout of the rightmost integral in Equation~\ref[eq:thr:v-int], see Section~\ref[sec:wo:thr-vel-integral].
+For further simplification, note that $C_2$ is an integration constant which can take arbitrary value.
+Therefore, it can ``absorb'' multiplication by and addition to other constants.
+$$
+\eqalign{
+    x(t) &= v_0 t + g \left( { t^2 \over 2 } - t_0t \right) + t c \ln m_0 + c { m(t) ( \ln m(t) - 1 ) \over R } + C_2 \cr
+}
+$$
+Now we solve for $C_2$ to get the particular solution, using $x(t_0) = x_0$.
+$$
+\eqalign{
+    C_2 &= x_0 - v_0 t_0 - g \left( { t_0^2 \over 2 } - t_0^2 \right) - t_0 c \ln m_0 - c { m_0 ( \ln m_0 - 1 ) \over R } \cr
+}
+$$
+And plugging back again we get
+$$
+\def\={\phantom=}
+\eqalignno{
+    x(t) &= v_0 t + g \left( { t^2 \over 2 } - t_0t \right) + t c \ln m_0 + c { m(t) ( \ln m(t) - 1 ) \over R } + \cr
+         &\= + x_0 - v_0 t_0 - g \left( { t_0^2 \over 2 } - t_0^2 \right) - t_0 c \ln m_0 - c { m_0 ( \ln m_0 - 1 ) \over R } & \eqmark[eq:thr:x-simplify] \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t - t_0 )^2 + c ( t - t_0 ) + { c \over R } m(t) \ln { m(t) \over m_0 }
+}
+$$
+For working out the simplification see Section~\ref[sec:wo:thr-x-simplify].
+Note that even though we write $m(t)$ and $\dot{m}(t)$, it is just a shorthand for their actual definitions.
+This does not hold for any $m(t)$ and $\dot{m}(t)$.
+
+\sec Summary
+Again, let's put all our equations for this situation together, and, for clarity, add index $T$ so that we know that it describes the situation under thrust.
+$$
+\eqalignno{
+    \dot{m}_T(t) &= -R & \eqmark[eq:thr:dm] \cr
+    m_T(t) &= m_{0_T} - R (t - t_{0_T}) & \eqmark[eq:thr:m] \cr
+    \ddot{x}_T(t) &= g_T - c { \dot{m}_T(t) \over m_T(t) } & \eqmark[eq:thr:a] \cr
+    \dot{x}_T(t) &= v_{0_T} + g_T ( t - t_{0_T} ) + c \ln { m_{0_T} \over m_T(t) } & \eqmark[eq:thr:v] \cr
+    x_T(t) &= x_{0_T} + v_{0_T} ( t - t_{0_T} ) + { g_T \over 2 } ( t - t_{0_T} )^2 + c ( t - t_{0_T} ) + { c \over R } m_T(t) \ln { m_T(t) \over m_{0_T} } & \eqmark[eq:thr:x] 
+}
+$$
+where $x_{0_T}$ is the initial position, $v_{0_T}$ is the initial velocity, $t_{0_T}$ is the time of start of the thrust phase (i.e. the time of engine ignition), $g_T$ is the gravitational acceleration, $c$ is the exhaust velocity, and $R$ is the mass flow rate.
+
+\chap Putting it together
+In the previous chapters, we examined the two distinct situations: free fall before the engine ignition, and the breaking action after engine is ignited.
+Now we need to find out the time when to ignite the engine, i.e. the time of transition between the two phases.
+
+\sec The facts
+First of all, let's set $t_{0_F} = 0$.
+This is the start of the free fall phase, i.e. where we are {\em now}.
+We can use arbitrary value but zero is the handiest.
+Now, let's attack this problem by first summarizing which values we know and which ones we do not.
+We know:
+\begitems
+    * $t_{0_F} = 0$ -- what time is it now\fnote{now = start of the free fall phase}
+    * $x_F(t_{0_F}) = x_{0_F}$ -- position of the vessel now
+    * $\dot{x}_F(t_{0_F}) = v_{0_F}$ -- velocity of the vessel now
+    * $m_F(t_{0_F}) = m_T(t_{0_T}) = m_{0_F} = m_{0_T} = m_0$ -- how heavy is the vessel at the start of the free fall phase (i.e. now) and at the start of the thrust phase
+    \begitems
+        * because the mass does not change in the free fall phase, those two values are equal
+    \enditems
+    * $x_T(t_e) = x_e$ -- where the vessel is going to be at the end of the thrust phase which is also the end of the whole maneuver
+    \begitems
+        * we ``know'' this because this is what we {\em want} -- on the ground (but let's keep it general, we might want to stop higher)
+    \enditems
+    * $\dot{x}_T(t_e) = v_e$ -- how fast is the vessel going to be moving at the end of the thrust phase
+    \begitems
+        * again, we {\em want} this -- not moving at all (but let's keep it general, we might want to only slow down, not stop completely)
+    \enditems
+    * $g_F = g_T = g$ -- gravitational acceleration for the free fall and thrust phases
+    \begitems
+        * our equations are set up so that, technically, we use different values but since we established that we are not going to consider changing gravitational acceleration
+          \fnote{
+              Even if we used different values for $g_F$ and $g_T$ it would still be only an approximation since we still do not consider the change of $g$ during the phases.
+          }, we are going to use the same value for both and call it simply $g$
+    \enditems
+    * $\dot{m}_T(t)$ -- rate of change of mass when under thrust
+    * $c$ -- the exhaust velocity
+\enditems
+We do not know:
+\begitems
+    * $t_{0_T}$ -- time of start of the thrust phase
+    * $t_e$ -- time of the end of the maneuver
+    * $\dot{x}_T(t_{0_T}) = v_{0_T}$ -- how fast is the vessel moving at the start of the thrust phase
+    * $x_T(t_{0_T}) = x_{0_T}$ -- where the vessel is at the start of the thrust phase
+    * $m_T(t_e)$ -- how heavy is the vessel at the end of the maneuver
+\enditems
+
+\sec The relationships
+Now we list what we know (or decide) to be true about the values we do not know:
+\begitems
+    * $t_{0_T}$ is the end of the free fall phase (time continuity) -- obviously, the thrust phase starts where the free fall phase ends, therefore the time of start of the thrust phase is also the time of end of the free fall phase
+    * $v_{0_T} = \dot{x}_F(t_{0_T})$ -- velocity at the start of the thrust phase is the same as the velocity at the end of the free fall phase (velocity continuity)
+    * $x_{0_T} = x_F(t_{0_T})$ -- position at the start of the thrust phase is the same as position at the end of the free fall phase (position continuity)
+\enditems
+
+\sec The solution
+Hopefully, we now know everything we need to know to solve this problem.
+We write down the thrust phase velocity and position equations
+$$
+\eqalignno{
+    \dot{x}_T(t) &= v_{0_T} + g ( t - t_{0_T} ) + c \ln { m_{0_T} \over m_T(t) } \cr
+    x_T(t) &= x_{0_T} + v_{0_T} ( t - t_{0_T} ) + { g \over 2 } ( t - t_{0_T} )^2 + c ( t - t_{0_T} ) + { c \over R } m_T(t) \ln { m_T(t) \over m_{0_T} }
+}
+$$
+and substitute $v_{0_T} \rightarrow \dot{x}_F(t_{0_T})$ and $x_{0_T} \rightarrow x_F(t_{0_T})$ as we established this relationship in the previous section, and rename $m_{0_T}$ to just $m_0$ to make things less cluttered.
+$$
+\eqalignno{
+    \dot{x}_T(t) &= \dot{x}_F(t_{0_T}) + g ( t - t_{0_T} ) + c \ln { m_0 \over m_T(t) } \cr
+    x_T(t) &= x_F(t_{0_T}) + \dot{x}_F(t_{0_T}) ( t - t_{0_T} ) + { g \over 2 } ( t - t_{0_T} )^2 + c ( t - t_{0_T} ) + { c \over R } m_T(t) \ln { m_T(t) \over m_0 }
+}
+$$
+Also, to make things clearer, we'll mark the known values in {\Green green}.
+$$
+\eqalignno{
+    \dot{x}_T(t) &= \dot{x}_F(t_{0_T}) + {\Green g} ( t - t_{0_T} ) + {\Green c} \ln { {\Green m_0} \over m_T(t) } \cr
+    x_T(t) &= x_F(t_{0_T}) + \dot{x}_F(t_{0_T}) ( t - t_{0_T} ) + { \Green g \over 2 } ( t - t_{0_T} )^2 + {\Green c} ( t - t_{0_T} ) + { \Green c \over R } m_T(t) \ln { m_T(t) \over {\Green m_0} }
+}
+$$
+Now we have equation for $x_T$ expressed partly in terms of $x_F$ and $\dot{x}_F$.
+Using Equations~\ref[eq:ff:x] and \ref[eq:ff:v]), we substitute for them
+$$
+\def\={\phantom=}
+\eqalignno{
+    \dot{x}_T(t) &= {\Green v_{0_F}} + {\Green g} ( t_{0_T} - {\Green t_{0_F}} ) + {\Green g} ( t - t_{0_T} ) + {\Green c} \ln { {\Green m_0} \over m_T(t) } & \eqmark[eq:sol-1] \cr
+    x_T(t) &= {\Green x_{0_F}} + {\Green v_{0_F}} ( t_{0_T} - {\Green t_{0_F}} ) + { {\Green g} t_{0_T} \over {\Green 2} } ( t_{0_T} - {\Green t_{0_F}} ) + ( {\Green v_{0_F}} + {\Green g} ( t_{0_T} - {\Green t_{0_F}} ) ) ( t - t_{0_T} ) + \cr
+           &\= + { \Green g \over 2 } ( t - t_{0_T} )^2 + {\Green c} ( t - t_{0_T} ) + { \Green c \over R } m_T(t) \ln { m_T(t) \over {\Green m_0} } & \eqmark[eq:sol-2]
+}
+$$
+and simplify them (for the simplification workout see Section~\ref[sec:sol-1])
+$$
+\eqalign{
+    \dot{x}_T(t) &= {\Green v_{0_F}} + {\Green g} t + {\Green c} \ln { {\Green m_0} \over m_T(t) } \cr
+    x_T(t) &= {\Green x_{0_F}} + {\Green v_{0_F}} t + { \Green g \over 2 } t^2 + {\Green c} ( t - t_{0_T} ) + { \Green c \over R } m_T(t) \ln { m_T(t) \over {\Green m_0} }
+}
+$$
+
+Now we have two equations (for position and velocity) for some general time $t$.
+The task is to get~$t_{0_T}$.
+To do so, we choose such time $t$ that we know something about.
+That time is $t_e$ which is the time of the end of the maneuver.
+We don't know what its value is but we know the position and velocity at that time.
+Then we will have two equations for two unknowns $t_e$ and $t_{0_T}$.
+First, substitute $t \rightarrow t_e$
+$$
+\eqalign{
+    \dot{x}_T(t_e) &= {\Green v_{0_F}} + {\Green g} t_e + {\Green c} \ln { {\Green m_0} \over m_T(t_e) } \cr
+    x_T(t_e) &= {\Green x_{0_F}} + {\Green v_{0_F}} t_e + { \Green g \over 2 } t_e^2 + {\Green c} ( t_e - t_{0_T} ) + { \Green c \over R } m_T(t_e) \ln { m_T(t_e) \over {\Green m_0} }
+}
+$$
+and then use our knowledge (or rather decision) about the final velocity and position and substitute $\dot{x}_t(t_e) \rightarrow {\Green v_e}$ and $x(t_e) \rightarrow {\Green x_e}$.
+Also, we substitute $m_t(t_e) \rightarrow {\Green m_0} - {\Green R} ( t_e - t_{0_T} )$ as having the mass encapsulated does not help us anymore.
+$$
+\eqalign{
+    {\Green v_e} &= {\Green v_{0_F}} + {\Green g} t_e + {\Green c} \ln { {\Green m_0} \over {\Green m_0} - {\Green R} ( t_e - t_{0_T} ) } \cr
+    {\Green x_e} &= {\Green x_{0_F}} + {\Green v_{0_F}} t_e + { \Green g \over 2 } t_e^2 + {\Green c} ( t_e - t_{0_T} ) + { \Green c \over R } ( {\Green m_0} - {\Green R} ( t_e - t_{0_T} ) ) \ln { {\Green m_0} - {\Green R} ( t_e - t_{0_T} ) \over {\Green m_0} }
+}
+$$
+Now we truly have two equations with only two non--green variables.
+However, the sad truth is that this system of equations cannot be solved analytically.
+Therefore, the only way is to find the solution numerically.
+But is is not that hard, as we are going to see in the next chapter.
+
+\chap Numerical solution
+Let's repeat the two equations from the end of the previous chapter and switch colours so that this time the {\em unknowns} will be marked {\Red red}.
+$$
+\eqalign{
+    v_e &= v_{0_F} + g {\Red t_e} + c \ln { m_0 \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) } \cr
+    x_e &= x_{0_F} + v_{0_F} {\Red t_e} + { g \over 2 } {\Red t_e}^2 + c ( {\Red t_e} - {\Red t_{0_T}} ) + { c \over R } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 }
+}
+$$
+
+As we said at the end of the previous chapter, such system of equations cannot be solved analytically and we have to use some numeric method to find the solution.
+There are many ways we could do that.
+We could just try to pick $t_e$ and $t_{0_T}$ randomly and look at how much of an inequality these values give, instead of an equality.
+That would be silly and would not give us any good solution in any reasonable amount of time.
+Another possible approach would be to use some optimization method, like simple local search (start with random values, then perturb them slightly and accept the change if the inequality improves), simmulated annealing or even some heavy duty methods like CMA--ES or genetic algorithms.
+However, all of these are black--box optimization methods that assume no knowledge about the problem being solved.
+
+Our problem, however, is the opposite of black--box.
+We know everything about the problem, as we have the very equations.
+We will therefore utilize a method designed to find solutions of nonlinear equations: the Newton's method.
+
+\sec Newton's method
+For a great overview of Newton's (and two other) methods we can recommend \cite[num].
+We won't go into details and just gloss over the surface and if more detail is needed, it can be found there.
+
+Newton's method in a single dimension works for equations in the form
+$$
+f(x) = 0
+$$
+where $f$ is some (poossibly nonlinear) differentiable function and $x$ is a single unknown variable.
+When the equation is in this form, it can be solved iteratively by repeating
+$$
+x_i = x_{i - 1} - {f(x_{i - 1}) \over f'(x_{i - 1})}
+$$
+where $x_i$ is the solution at step $i$ and $f'$ is the first derivative of $f$ with respect to $x$.
+The iteration stops when $|x_i - x_{i - 1}| < \varepsilon$ where $\varepsilon$ is an arbitrarily chosen tolerance.
+The method requires us to know $f'$ (the first derivative of $f$) and to provide it some starting point $x_0$.
+However, we have two equations with two unknowns so we have to use multi--dimensional version of the method.
+
+Instead of solving a single equation $f(x) = 0$ we have a system of equations
+$$
+{\bf F}(x_1, x_2, \cdots, x_n) = \pmatrix{ f_1(x_1, x_2, \cdots, x_n) \cr f_2(x_1, x_2, \cdots, x_n) \cr \vdots \cr f_n(x_1, x_2, \cdots, x_n) } = \pmatrix{ 0 \cr 0 \cr \vdots \cr 0 },
+$$
+instead of a single unknown $x$ we have a vector
+$$
+{\bf x} = \pmatrix{ x_1 \cr x_2 \cr \vdots \cr x_n },
+$$
+and instead of the first derivative $f'$ we have a matrix of first derivatives (each function in each unknown), called Jacobian
+$$
+{\bf J}({\bf x}) = \pmatrix{
+    {\partial f_1 \over \partial x_1}({\bf x}) & {\partial f_1 \over \partial x_2}({\bf x}) & \cdots & {\partial f_1 \over \partial x_n}({\bf x}) \cr
+    {\partial f_2 \over \partial x_1}({\bf x}) & {\partial f_2 \over \partial x_2}({\bf x}) & \cdots & {\partial f_2 \over \partial x_n}({\bf x}) \cr
+    \vdots & \vdots & \ddots & \vdots \cr
+    {\partial f_n \over \partial x_1}({\bf x}) & {\partial f_n \over \partial x_2}({\bf x}) & \cdots & {\partial f_n \over \partial x_n}({\bf x}) \cr
+}.
+$$
+The iterative rule then has the form
+$$
+{\bf x}^{(i)} = {\bf x}^{(i - 1)} - {\bf J}^{-1}({\bf x}^{(i - 1)}) \cdot {\bf F}({\bf x}^{(i - 1)}).
+$$
+Since there is no such thing as division with matrices, the inverse of the Jacobian is used.
+The stopping condition changes to the norm of the difference of the consecutive solutions: $||{\bf x}^{(i)} - {\bf x}^{(i - 1)}|| < \varepsilon$.
+Any norm can be chosen, usually Eculidean is used.
+
+\sec Preparing for Newton's method
+In order to be able to apply the Newton's method to our problem, we have to perpare it.
+Step zero is to make things clear.
+In order not to confuse our sought values with position,
+the solution vector will be called ${\bf t} = \pmatrix{t_{0_T} \cr t_e}$ instead of ${\bf x}$ since we are looking for times.
+Next, we need to arrange both our equations into the form $f_{a, b}({\bf t}) = 0$.
+This is easy as we just subtract the left--hand side
+$$
+\eqalign{
+    0 &= v_{0_F} + g {\Red t_e} + c \ln { m_0 \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) } - v_e \cr
+    0 &= x_{0_F} + v_{0_F} {\Red t_e} + { g \over 2 } {\Red t_e}^2 + c ( {\Red t_e} - {\Red t_{0_T}} ) + { c \over R } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } - x_e \cr
+}
+$$
+Now let's use the function notation to name our equations
+$$
+\eqalignno{
+    f_a({\bf t}) &\equiv v_{0_F} + g {\Red t_e} + c \ln { m_0 \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) } - v_e & \eqmark[eq:newton-fa] \cr
+    f_b({\bf t}) &\equiv x_{0_F} + v_{0_F} {\Red t_e} + { g \over 2 } {\Red t_e}^2 + c ( {\Red t_e} - {\Red t_{0_T}} ) + { c \over R } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } - x_e & \eqmark[eq:newton-fb] \cr
+}
+$$
+Next, we need the Jacobian, i.e. the four derivatives (for the workout of the differentiation see Section~\ref[sec:newton-diff])
+$$
+\eqalignno{
+    { \partial f_a \over \partial t_{0_T} }({\bf t}) &= { -Rc \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) } \cr
+    { \partial f_a \over \partial t_e }({\bf t}) &= g + { Rc \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) } \cr
+    { \partial f_b \over \partial t_{0_T}}({\bf t}) &= c \ln \left( 1 - { R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \right) \cr
+    { \partial f_b \over \partial t_e}({\bf t}) &= v_{0_F} + g {\Red t_e} - c \ln \left( 1 - { R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \right) \cr
+}
+$$
+So, our Jacobian looks like this
+$$
+\eqalign{
+    {\bf J}({\bf t}) &= \pmatrix{
+        {\partial f_a \over \partial t_{0_T}}({\bf t}) & {\partial f_a \over \partial t_e}({\bf t}) \cr
+        {\partial f_b \over \partial t_{0_T}}({\bf t}) & {\partial f_b \over \partial t_e}({\bf t}) \cr
+    } =
+    \pmatrix{
+        { -Rc \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) } & g + { Rc \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) } \cr
+        c \ln \left( 1 - { R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \right) & v_{0_F} + g {\Red t_e} - c \ln \left( 1 - { R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \right) \cr
+    }
+}
+$$
+
+Now we could also precalculate ${\bf J}^{-1}({\bf t})$ and ${\bf J}^{-1}({\bf t}) {\bf F}({\bf t})$ all symbolically but there is no point anymore.
+It would only be a huge mess and we need to go to the numbers anyway so let's save us some work and do the inverse with the numerical values when doing the iteration.
+For a $2 \times 2$ matrix, its inverse is simple
+$$
+\pmatrix{ a & b \cr c & d }^{-1} = { 1 \over ad - bc } \pmatrix{ d & -b \cr -c & a } = \pmatrix{ { d \over ad - bc } & { -b \over ad - bc } \cr { -c \over ad - bc } & { a \over ad - bc } }.
+$$
+
+\chap Practical example
+Let's put ourselves at an altitude of 2 000 m ASL above Tylo's Galileo crater (23.05$^\circ$ N 0.1$^\circ$ W) at zero vertical speed.
+Our ship weighs 805 kg before the start of the burn and we will use a single {\em 48--7S ``Spark'' Liquid Fuel Engine}.
+The parameters are summarized in Table~\ref[tab:example-params].
+\midinsert
+    \label[tab:example-params]
+    \hbox to \hsize{
+        \hss
+        \table{lrl}{
+            parameter    & value                                                                       & unit                    \crl
+            $m(t_{0_F})$ & 805                                                                         & kg                      \cr
+            $I_{sp,g_0}$ & 320                                                                         & s                       \cr
+            $F_T$        & $20 \cdot 10^3$                                                             & N                       \cr
+            $g$          & -7.79                                                                       & ${\rm m \cdot s}^{-2}$  \cr
+            $v_{0_F}$    & 0                                                                           & ${\rm m \cdot s}^{-1}$  \cr
+            $x_{0_F}$    & 2000                                                                        & m                       \cr
+            $R$          & ${F_T \over I_{sp,g_0} g_0} = {20 \cdot 10^3 \over 320 \cdot 9.81} = 6.371$ & ${\rm kg \cdot s}^{-1}$ \cr
+            $c$          & $I_{sp,g_0} g_0 = 320 \cdot 9.81 = 3139.2$                                  & ${\rm m \cdot s}^{-1}$  \cr
+            $x_e$        & 0                                                                           & m                       \cr
+            $v_e$        & 0                                                                           & ${\rm m \cdot s}^{-1}$  \crl
+        }
+        \hss
+    }
+    \caption/t {
+        Parameters of the example.
+        {\it Note to parameter $g$:} Tylo's surface gravity at 0 m ASL is -7.85 ${\rm m \cdot s}^{-2}$ but the terrain height at the landing spot is 2330 m so corresponding gravity has to be used.
+        {\it Note to parameter $x_{0_F}$:} Although we defined position as the distance from the centre of the central body, our equations are invariant w.r.t. translation in position (because we neglected changing gravity) so we can just use 0 for ground.
+    }
+\endinsert
+
+Now we know everything, so we can calculate the suicide burn.
+We will need some starting point for the Newton's method.
+Let's guesstimate some numbers that are in the general ballpark of our situation.
+Let's set $t_e^{(0)}$ to the time it would take to just free fall to the ground:
+$$
+\eqalign{
+    x_e &= x_{0_F} + v_{0_F} t_e^{(0)} + { g \left( t_e^{(0)} \right)^2 \over 2} \cr
+    0 &= { g \left( t_e^{(0)} \right)^2 \over 2} + v_{0_F} t_e^{(0)} + x_{0_F} - x_e \cr
+    0 &= g \left( t_e^{(0)} \right)^2 + 2 v_{0_F} t_e^{(0)} + 2 ( x_{0_F} - x_e ) \cr
+    t_e^{(0)} &= - { v_{0_F} \pm \sqrt{ v_{0_F}^2 - 2 g x_0 + 2 g x_e } \over g } \approx 22
+}
+$$
+We just rounded it to some nice number because we don't need anything extra precise, just something that is not completely and totally wrong.
+For $t_{0_T}^{(0)}$, let's just use half of $t_e^{(0)}$.
+Now we can iterate, e.g. in a spreadsheet processor (which is what we did).
+The process and result is shown in Table~\ref[tab:newton-iter].
+\midinsert
+    \label[tab:newton-iter]
+    \table{|c||c|c|c|c|c|c|}{
+        \crl
+        $i$ & ${\bf J}({\bf t}^{(i)})$                        & ${\bf J}^{-1}({\bf t}^{(i)})$                                 & ${\bf F}({\bf t}^{(i)})$            & ${\bf J}^{-1}({\bf t}^{(i)}) {\bf F}({\bf t}^{(i)})$ & ${\bf t}^{(i)}$             & $||{\bf t}^{(i)} - {\bf t}^{(i - 1)}||$ \crll
+        0   & --                                              & --                                                            & --                                  & --                                                   & $\pmatrix{11    \cr 22}$    & --                                      \crl
+        1 & $\pmatrix{-27.21 & 19.42     \cr -285.9 & 114.5}$ & $\pmatrix{ 4.701e-2 & -7.972e-3  \cr  1.173e-1 & -1.117e-2}$  & $\pmatrix{114.5     \cr 1663}$      & $\pmatrix{-7.877     \cr -5.138}$                    & $\pmatrix{18.88 \cr 27.14}$ & 9.404                                   \crl
+        2 & $\pmatrix{-212.2 & 8.707e-1  \cr -26.58 & 18.79}$ & $\pmatrix{-4.738e-3 &  2.195e-4  \cr -6.702e-3 &  5.352e-2}$  & $\pmatrix{-1.603    \cr 8.707e-1}$  & $\pmatrix{ 7.788e-3  \cr  5.735e-2}$                 & $\pmatrix{18.87 \cr 27.08}$ & 5.788e-2                                \crl
+        3 & $\pmatrix{-211.0 & 2.764e-4  \cr -26.57 & 18.78}$ & $\pmatrix{-4.740e-3 &  6.976e-8  \cr -6.706e-3 &  5.324e-2}$  & $\pmatrix{ 1.983e-2 \cr 2.764e-4}$  & $\pmatrix{-9.402e-5  \cr -1.183e-4}$                 & $\pmatrix{18.87 \cr 27.08}$ & 1.511e-4                                \crl
+        4 & $\pmatrix{-211.0 & 6.654e-11 \cr -26.57 & 18.78}$ & $\pmatrix{-4.740e-3 &  1.679e-14 \cr -6.706e-3 &  5.324e-2}$  & $\pmatrix{-4.671e-8 \cr 6.654e-11}$ & $\pmatrix{ 2.214e-10 \cr  3.168e-10}$                & $\pmatrix{18.87 \cr 27.08}$ & 3.865e-10                               \crl
+        5 & $\pmatrix{-211.0 & 0         \cr -26.57 & 18.78}$ & $\pmatrix{-4.740e-3 &  0         \cr -6.706e-3 &  5.324e-2}$  & $\pmatrix{ 0        \cr 0}$         & $\pmatrix{0          \cr  0}$                        & $\pmatrix{18.87 \cr 27.08}$ & 0                                       \crl
+    }
+    \caption/t {
+        Iteration of the Newton's method.
+        All numbers displayed to 4 significant figures but the calculation was performed with full precision.
+    }
+\endinsert
+And in just 5 iterations we have a result.
+The whole situation is going to look like this:
+\begitems
+    * we start at 2 000 m above ground
+    * we immediately start a stopwatch
+    * when the stopwatch shows 18.87 s we ignite our engine
+    * when the stopwatch shows 27.08 s we shut down our engine and we should be safely on the ground
+      \fnote{Actually, we should be somewhat above the ground because we assumed surface--level gravity for the whole time but the gravity is a bit weaker higher up.}
+\enditems
+
+\sec ``Real''--world test
+Let's see if this is what is really going to happen.
+We write a simple kOS script:
+\begtt
+set ship:control:pilotmainthrottle to 0.
+lock throttle to 1.
+// wait until we are at Tylo
+wait until ship:body = Tylo.
+clearscreen.
+lock steering to heading(0, 90).
+// wait for burn start
+local t0 is time:seconds.
+local t is time:seconds.
+local start is 18.87.
+local end is 27.08.
+until t - t0 >= start {
+  print "Suicide burn start countdown: " + (start - (t - t0)) at(0, 1).
+  wait 0.
+  set t to time:seconds.
+}
+// ignite the engine
+stage.
+// wait for burn end
+until t - t0 >= end {
+  print "Suicide burn end countdown: " + (end - (t - t0)) at(0, 2).
+  wait 0.
+  set t to time:seconds.
+}
+// shut down the engine
+lock throttle to 0.
+\endtt
+We will set this as the boot script of our ship so that we don't have to start it manually.
+The result can be seen here: \url{https://youtu.be/VHi7BegwB44}.
+Quite a hard landing but in one piece!
+
+\chap Conclusion and future work
+As can be seen in the video, we reached zero velocity higher than we actually wanted, which was expected since we used the surface--level gravitational acceleration but the true gravity was a bit weaker for almost the whole time.
+This is the major drawback of this approach.
+There are several ways of how to mitigate~it.
+
+We could use different gravitational acceleration for the free fall and thrust phases by iterating this whole solution process.
+We would start with surface--level for both phases (exactly as we did here) and when we have the result, we could calculate the gravity for the position at the time of ignition.
+We could then use it for the free fall phase to get a new solution.
+And we could repeat this until the results change.
+It would still ovestimate (because the used value of gravity would still be higher than the true gravity) but less so.
+We could also split the problem into more than two phases (and use the estimation process as we just described) but at that point it would probably be easier to just simulate the whole maneuver numerically.
+
+We could solve the suicide burn using what we derived in this ``paper'' but repeatedly during the free fall and use the last obtained value.
+It would give more precise result because the changing gravity would get incorporated into the position and velocity at the time of computation of the burn.
+In other words, we would spend less time free falling (from the point of view of the solver) so the error due to changing gravity would be smaller.
+The repeated solving would be terminated at the moment when we would be at the time corresponding to the last computed burn time.
+Then we would really have to start the engine.
+
+The third approach would be to ditch this kind of solution altogether and just simulate the whole maneuver.
+This would have the benefit that we could incorporate whatever we wanted, especially gravity dependent on position and drag.
+After the simulation we would see how we landed and if it was not acceptable, we would tweak the ignition time and repeat the simulation, doing this untill we got to the desired landing.
+A drawback is that it takes more computation time than a ``direct'' solution.
+The direct solution, however, could be used as a very good starting point for such process.
+
+This ``paper'' {\bf will} be extended with one or more of the above mentioned approaches some time in the future.
+We hope that this exercise was at least a bit helpful.
+If you have any questions, comments, or improvements, just ping us (me) at the kOS Discord server \cite[kos-discord] (user {\tt zegkljan\#8971}) or write me an~e--mail.
+
+\bibchap
+
+\bib [kos]         Steven ``Dunbaratu'' Mading et al.: kOS. \url{https://github.com/KSP-KOS/KOS}
+\bib [varmass]     Peraire, J. and Widnall, S. Variable Mass Systems: The Rocket Equation. Lecture 14. In: 16.07 Dynamics. MIT. \url{https://ocw.mit.edu/courses/aeronautics-and-astronautics/16-07-dynamics-fall-2009/lecture-notes/MIT16_07F09_Lec14.pdf}
+\bib [num]         Remani, C. Numerical Methods for Solving Systems of Nonlinear Equations. Leakhead University. \url{https://www.lakeheadu.ca/sites/default/files/uploads/77/docs/RemaniFinal.pdf}
+\bib [kos-discord] kOS Discord server. \url{https://discord.com/channels/210513998876114944}
+
+\app Workouts
+\sec[sec:wo:thr-motion-integral] Solving the integral from Equation \ref[eq:thr:motion-int]
+$$
+\eqalign{
+    &\int { \dot{m}(t) \over m(t) } \dt
+    = \Bigg|
+        \eqlines{\baselineskip=.7\baselineskip}
+        \eqstyle{\scriptstyle}
+        \eqalign{
+            \alpha &= m(t) \cr
+            \d\alpha &= \dot{m}(t) \dt \cr
+        }
+    \Bigg|
+    = \int { \d{\alpha} \over \alpha }
+    = \ln \left| \alpha \right| + C_1
+    = \ln m(t) + C_1
+}
+$$
+Note that since mass is never negative, we dropped the absolute value in the logarithm.
+
+\sec[sec:wo:thr-vel-integral] Solving the integral from Equation \ref[eq:thr:v-int]
+The integral
+$$
+\int \ln { m_0 \over m(t) } \dt
+$$
+cannot be solved generally, we have to use Equation~\ref[eq:thr:mass-change] which tells us what $\dot{m}(t)$ is so that we can use substitution for $m(t)$.
+$$
+\eqalign{
+    &\int \ln { m_0 \over m(t) } \dt
+    = \int \ln m_0 \dt - \int \ln m(t) \dt
+    = t \ln m_0 - \int \ln m(t) \dt
+    = \Bigg|
+        \eqlines{\baselineskip=.7\baselineskip}
+        \eqstyle{\scriptstyle}
+        \eqalign{
+            \alpha &= m(t) \cr
+            \d\alpha &= \dot{m}(t) \dt = -R \dt \cr
+            \dt &= -{ \d\alpha \over R } \cr
+        }
+    \Bigg|
+    = \cr &= t \ln m_0 + { 1 \over R } \int \ln \alpha \d{\alpha}
+    = t \ln m_0 + { \alpha ( \ln ( \alpha ) - 1 ) \over R } + C_2
+    = t \ln m_0 + { m(t) ( \ln m(t) - 1 ) \over R } + C_2
+}
+$$
+
+\sec[sec:wo:thr-x-simplify] Simplifying the Equation \ref[eq:thr:x-simplify]
+$$
+\def\={\phantom=}
+\eqalign{
+    x(t) &= v_0 t + g \left( { t^2 \over 2 } - t_0t \right) + t c \ln m_0 + c { m(t) ( \ln ( m(t) ) - 1 ) \over R } + \cr
+         &\= + x_0 - v_0 t_0 - g \left( { t_0^2 \over 2 } - t_0^2 \right) - t_0 c \ln m_0 - c { m_0 ( \ln ( m_0 ) - 1 ) \over R } \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + g \left( \left( { t^2 \over 2 } - t_0t \right) - \left( { t_0^2 \over 2 } - t_0^2 \right) \right) + \cr
+         &\= + ( t - t_0 ) c \ln m_0 + { c \over R } \bigg( m(t) ( \ln ( m(t) ) - 1 ) - m_0 ( \ln ( m_0 ) - 1 ) \bigg) \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + g \left( { t^2 \over 2 } - t_0t + { t_0^2 \over 2 } \right) + c ( t - t_0 ) \ln m_0 + \cr
+         &\= + { c \over R } \bigg( ( m_0 - R ( t - t_0 ) ) ( \ln ( m(t) ) - 1 ) - m_0 ( \ln ( m_0 ) - 1 ) \bigg) \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t^2 - 2 t_0 t + t_0^2 ) + c ( t - t_0 ) \ln m_0 + \cr
+         &\= + { c \over R } \bigg( ( m_0 - R ( t - t_0 ) ) \ln ( m(t) ) - ( m_0 - R ( t - t_0 ) ) - m_0 \ln ( m_0 ) + m_0 \bigg) \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t - t_0 )^2 + c ( t - t_0 ) \ln m_0 + \cr
+         &\= + { c \over R } \bigg( ( m_0 - R ( t - t_0 ) ) \ln ( m(t) ) + R ( t - t_0 ) - m_0 \ln ( m_0 ) \bigg) \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t - t_0 )^2 + c ( t - t_0 ) \ln m_0 + \cr
+         &\= + { c \over R } \bigg( m_0 \ln ( m(t) ) - R ( t - t_0 ) \ln ( m(t) ) + R ( t - t_0 ) - m_0 \ln ( m_0 ) \bigg) \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t - t_0 )^2 + c ( t - t_0 ) \ln m_0 + { c \over R } \bigg( m_0 \ln { m(t) \over m_0 } - R ( t - t_0 ) \ln ( m(t) ) + R ( t - t_0 ) \bigg) \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t - t_0 )^2 + c ( t - t_0 ) \ln m_0 + { c \over R } m_0 \ln { m(t) \over m_0 } - c ( t - t_0 ) \ln ( m(t) ) + c ( t - t_0 ) \cr
+}
+$$
+$$
+\eqalign{
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t - t_0 )^2 + c ( t - t_0 ) \ln { m_0 \over m(t) } + { c \over R } m_0 \ln { m(t) \over m_0 } + c ( t - t_0 ) \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t - t_0 )^2 - c ( t - t_0 ) \ln { m(t) \over m_0 } + { c \over R } m_0 \ln { m(t) \over m_0 } + c ( t - t_0 ) \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t - t_0 )^2 + \left( { c \over R } m_0 - c ( t - t_0 ) \right) \ln { m(t) \over m_0 } + c ( t - t_0 ) \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t - t_0 )^2 + { c \over R } ( m_0 - R ( t - t_0 ) ) \ln { m(t) \over m_0 } + c ( t - t_0 ) \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t - t_0 )^2 + { c \over R } m(t) \ln { m(t) \over m_0 } + c ( t - t_0 ) \cr
+    x(t) &= x_0 + v_0 ( t - t_0 ) + { g \over 2 } ( t - t_0 )^2 + c ( t - t_0 ) + { c \over R } m(t) \ln { m(t) \over m_0 } \cr
+}
+$$
+
+\sec[sec:sol-1] Simplifying Equations \ref[eq:sol-1] and \ref[eq:sol-2]
+Equation~\ref[eq:sol-1] (${\Green t_{0_F}}$ gets replaced by 0):
+$$
+\eqalign{
+    \dot{x}_T(t) &= {\Green v_{0_F}} + {\Green g} ( t_{0_T} - {\Green t_{0_F}} ) + {\Green g} ( t - t_{0_T} ) + {\Green c} \ln { {\Green m_0} \over m_T(t) } \cr
+    \dot{x}_T(t) &= {\Green v_{0_F}} + {\Green g} t_{0_T} + {\Green g} t - {\Green g} t_{0_T} + {\Green c} \ln { {\Green m_0} \over m_T(t) } \cr
+    \dot{x}_T(t) &= {\Green v_{0_F}} + {\Green g} t + {\Green c} \ln { {\Green m_0} \over m_T(t) } \cr
+}
+$$
+Equation~\ref[eq:sol-2] (again, ${\Green t_{0_F}}$ gets replaced by 0):
+$$
+\def\={\phantom=}
+\eqalignno{
+    x_T(t) &= {\Green x_{0_F}}
+        + {\Green v_{0_F}} ( t_{0_T} - {\Green t_{0_F}} )
+        + { {\Green g} t_{0_T} \over {\Green 2} } ( t_{0_T} - {\Green t_{0_F}} )
+        + ( {\Green v_{0_F}} + {\Green g} ( t_{0_T} - {\Green t_{0_F}} ) ) ( t - t_{0_T} )
+        + \cr
+        &\=
+        + { \Green g \over 2 } ( t - t_{0_T} )^2
+        + {\Green c} ( t - t_{0_T} )
+        + { \Green c \over R } m_T(t) \ln { m_T(t) \over {\Green m_0} } \cr
+    x_T(t) &= {\Green x_{0_F}}
+        + {\Green v_{0_F}} t_{0_T}
+        + { {\Green g} t_{0_T}^2 \over {\Green 2} }
+        + ( {\Green v_{0_F}} + {\Green g} t_{0_T} ) ( t - t_{0_T} )
+        + \cr
+        &\=
+        + { \Green g \over 2 } ( t - t_{0_T} )^2
+        + {\Green c} ( t - t_{0_T} )
+        + { \Green c \over R } m_T(t) \ln { m_T(t) \over {\Green m_0} } \cr
+    x_T(t) &= {\Green x_{0_F}}
+        + {\Green v_{0_F}} t_{0_T}
+        + { {\Green g} t_{0_T}^2 \over {\Green 2} }
+        + {\Green v_{0_F}} t
+        - {\Green v_{0_F}} t_{0_T}
+        + {\Green g} t_{0_T} t
+        - {\Green g} t_{0_T}^2
+        + \cr
+        &\=
+        + { \Green g \over 2 } ( t - t_{0_T} )^2
+        + {\Green c} ( t - t_{0_T} )
+        + { \Green c \over R } m_T(t) \ln { m_T(t) \over {\Green m_0} } \cr
+    x_T(t) &= {\Green x_{0_F}}
+        + {\Green v_{0_F}} t
+        - { {\Green g} t_{0_T}^2 \over {\Green 2} }
+        + {\Green g} t_{0_T} t
+        + { \Green g \over 2 } ( t - t_{0_T} )^2
+        + {\Green c} ( t - t_{0_T} )
+        + { \Green c \over R } m_T(t) \ln { m_T(t) \over {\Green m_0} } \cr
+    x_T(t) &= {\Green x_{0_F}}
+        + {\Green v_{0_F}} t
+        - {\Green g \over 2 } ( t_{0_T}^2 - 2 t_{0_T} t )
+        + { \Green g \over 2 } ( t^2 - 2 t_{0_T} t + t_{0_T}^2 )
+        + {\Green c} ( t - t_{0_T} )
+        + { \Green c \over R } m_T(t) \ln { m_T(t) \over {\Green m_0} } \cr
+    x_T(t) &= {\Green x_{0_F}}
+        + {\Green v_{0_F}} t
+        + { \Green g \over 2 } ( t^2 - 2 t_{0_T} t + t_{0_T}^2 - t_{0_T}^2 + 2 t_{0_T} t )
+        + {\Green c} ( t - t_{0_T} )
+        + { \Green c \over R } m_T(t) \ln { m_T(t) \over {\Green m_0} } \cr
+    x_T(t) &= {\Green x_{0_F}}
+        + {\Green v_{0_F}} t
+        + { \Green g \over 2 } t^2
+        + {\Green c} ( t - t_{0_T} )
+        + { \Green c \over R } m_T(t) \ln { m_T(t) \over {\Green m_0} } \cr
+}
+$$
+
+\sec[sec:newton-diff] Differentiation of Equations \ref[eq:newton-fa] and \ref[eq:newton-fb]
+Equation~\ref[eq:newton-fa] w.r.t $t_{0_T}$:
+$$
+\eqalign{
+    &{ \partial f_a \over \partial t_{0_T} } \left( v_{0_F} + g {\Red t_e} + c \ln { m_0 \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) } - v_e \right)
+    = c { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \cdot { \partial \over \partial t_{0_T} } { m_0 \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) }
+    = \cr
+    &= c { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \cdot m_0 { \partial \over \partial t_{0_T} } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) )^{-1}
+    = \cr
+    &= -c ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) )^{-2} \cdot { \partial \over \partial t_{0_T} } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) )
+    = \cr
+    &= -c ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) )^{-2} R
+    = -Rc { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) )^2 }
+    = \cr
+    &= { -Rc \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) }
+}
+$$
+Equation~\ref[eq:newton-fa] w.r.t $t_e$:
+$$
+\eqalign{
+    &{ \partial f_a \over \partial t_e } \left( v_{0_F} + g {\Red t_e} + c \ln { m_0 \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) } - v_e \right)
+    = g + c { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \cdot { \partial f_a \over \partial t_e } { m_0 \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) }
+    = \cr
+    &= g + c { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \cdot m_0 { \partial f_a \over \partial t_e } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) )^{-1}
+    = \cr
+    &= g - c ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) )^{-2} \cdot { \partial f_a \over \partial t_e } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) )
+    = \cr
+    &= g - c { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) )^2 } ( -R )
+    = g + { Rc \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) }
+}
+$$
+Equation~\ref[eq:newton-fb] w.r.t $t_{0_T}$:
+$$
+\def\={\phantom=}
+\eqalign{
+    &{ \partial f_b \over \partial t_{0_T}} \left( x_{0_F} + v_{0_F} {\Red t_e} + { g \over 2 } {\Red t_e}^2 + c ( {\Red t_e} - {\Red t_{0_T}} ) + { c \over R } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } - x_e \right)
+    = \cr
+    
+    &= -c + { c \over R } \cdot { \partial f_a \over \partial t_{0_T} } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 }
+    = \cr
+
+    &= -c + { c \over R } \left( \left( { \partial f_a \over \partial t_{0_T} } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) \right) \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \right.
+    + \cr
+    &\=\qquad\qquad\quad + \left. ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) { \partial f_a \over \partial t_{0_T} } \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \right)
+    = \cr
+
+    &= -c + { c \over R } \left( R \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } + { ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) m_0 \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) } { \partial f_a \over \partial t_{0_T} } { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \right)
+    = \cr
+
+    &= -c + { c \over R } \left( R \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } + { \partial f_a \over \partial t_{0_T} } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) \right)
+    = \cr
+
+    &= -c + { c \over R } \left( R \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } + R \right)
+    = -c + c \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } + c
+    = c \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 }
+    = \cr
+
+    &= c \ln \left( { m_0 \over m_0 } - { R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \right)
+    = c \ln \left( 1 - { R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \right)
+}
+$$
+Equation~\ref[eq:newton-fb] w.r.t $t_e$:
+$$
+\def\={\phantom=}
+\eqalign{
+    &{ \partial f_b \over \partial t_e} \left( x_{0_F} + v_{0_F} {\Red t_e} + { g \over 2 } {\Red t_e}^2 + c ( {\Red t_e} - {\Red t_{0_T}} ) + { c \over R } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } - x_e \right)
+    = \cr
+
+    &= v_{0_F} + g {\Red t_e} + c + { c \over R } { \partial f_b \over \partial t_e} ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 }
+    = \cr
+
+    &= v_{0_F} + g {\Red t_e} + c + { c \over R } \left( { \partial f_b \over \partial t_e} ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) \right) \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 }
+    + \cr
+    &\= + { c \over R } ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) { \partial f_b \over \partial t_e} \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 }
+    = \cr
+
+    &= v_{0_F} + g {\Red t_e} + c + { c \over R } ( -R ) \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } + { c \over R } { ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) ) m_0 \over m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) } { \partial f_b \over \partial t_e} { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 }
+    = \cr
+
+    &= v_{0_F} + g {\Red t_e} + c - c \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } + { c \over R } { \partial f_b \over \partial t_e} ( m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) )
+    = \cr
+
+    &= v_{0_F} + g {\Red t_e} + c - c \ln { m_0 - R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } - { c \over R } R
+    = v_{0_F} + g {\Red t_e} + c - c \ln \left( 1 - { R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \right) - c
+    = \cr
+
+    &= v_{0_F} + g {\Red t_e} - c \ln \left( 1 - { R ( {\Red t_e} - {\Red t_{0_T}} ) \over m_0 } \right)
+}
+$$
+
+\bye
