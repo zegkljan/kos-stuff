@@ -15,26 +15,41 @@ import os.path as pth
 import sys
 import textwrap
 import time
+import numpy as np
+import subprocess
 
 import _gturn as gt
 import koson as ks
 
 
-class Logger(object):
-    def __init__(self, level, name):
+class ProcessorLogger(object):
+    def __init__(self, level, name, file):
         self.level = level
         self.logger = logging.getLogger(name)
+        self.file = file
+
+        if self.file is not None:
+            open(self.file, mode='w').close()
 
     def write(self, message):
+        if self.file is not None:
+            with open(self.file, mode='a') as f:
+                f.write(message)
         for m in message.splitlines():
             self.logger.log(self.level, m)
 
 
-def gturn_wrapper(name, **kwargs):
+def gturn_wrapper(name, task_dir, store_logs, **kwargs):
     sout = sys.stdout
     serr = sys.stderr
-    sys.stdout = Logger(logging.DEBUG, 'gturn-' + name)
-    sys.stderr = Logger(logging.INFO, 'gturn-' + name)
+    if store_logs:
+        sys.stdout = ProcessorLogger(logging.DEBUG, 'gturn-' + name,
+                                     pth.join(task_dir, 'stdout.txt'))
+        sys.stderr = ProcessorLogger(logging.INFO, 'gturn-' + name,
+                                     pth.join(task_dir, 'stderr.txt'))
+    else:
+        sys.stdout = ProcessorLogger(logging.DEBUG, 'gturn-' + name, None)
+        sys.stderr = ProcessorLogger(logging.INFO, 'gturn-' + name, None)
     try:
         res = gt.compute_gravity_turn(**kwargs)
     finally:
@@ -68,31 +83,44 @@ def scan_tasks(directory, skip_tasks):
                           'a file.', datfile)
             continue
         outfile = pth.join(tskdir, odata)
-        if pth.isfile(odata):
+        if pth.isfile(outfile):
             logging.debug('Skipping because result file %s already.', outfile)
             continue
+        logging.debug('Found fresh data.')
         with open(pth.join(tskdir, idata), mode='r') as f:
             data = ks.load(f)
             logging.debug('Loaded data: %s', str(data))
-            tasks.append((d, data))
+            tasks.append((d, tskdir, data))
     return tasks
 
 
-def write_result(directory, name, result, indent):
+def write_result(directory, name, result, indent, write_raw_data):
     if indent:
         indent = 2
     olock = 'output.lock'
     odata = 'output.json'
+    odata_raw = 'output-raw.txt'
     tskdir = pth.join(directory, name)
     ofile = pth.join(tskdir, odata)
+    ofile_raw = pth.join(tskdir, odata_raw)
     lockfile = pth.join(tskdir, olock)
+
     logging.debug('Writing result of task %s', name)
     logging.debug('Writing lock file %s', lockfile)
     with open(lockfile, mode='w') as f:
         f.write('')
+
     logging.debug('Writing results file %s', ofile)
     with open(ofile, mode='w') as f:
         ks.dump(result, f, indent=indent)
+
+    if write_raw_data:
+        logging.debug('Writing raw results file %s', ofile_raw)
+        bigdata = np.column_stack([result[key]
+                                   for key in sorted(result.keys())])
+        np.savetxt(ofile_raw, bigdata, delimiter='\t',
+                   header='\t'.join(sorted(result.keys())))
+
     logging.debug('Removing lock file %s', lockfile)
     os.unlink(lockfile)
     logging.debug('Done.')
@@ -121,7 +149,7 @@ class SwitchPool(object):
             return SwitchPool.SyncResult(func(*args, **kwds))
 
 
-def run(async, directory, indent):
+def run(async, directory, indent, store_logs, write_raw_data):
     logging.info('Starting gravity turn computation server. async=%s', async)
     logging.info('Watching directory: %s', directory)
     pool = SwitchPool(async, processes=1)
@@ -129,19 +157,21 @@ def run(async, directory, indent):
     while True:
         logging.debug('Watching cycle start.')
         tasks = scan_tasks(directory, running_tasks)
-        for name, data in tasks:
-            running_tasks[name] = pool.apply(gturn_wrapper, args=(name,),
+        for name, task_dir, data in tasks:
+            running_tasks[name] = pool.apply(gturn_wrapper,
+                                             args=(name, task_dir, store_logs),
                                              kwds=data)
-        for name, res in running_tasks.items():
+        for name in list(running_tasks.keys()):
+            res = running_tasks[name]
             if res.ready():
-                write_result(directory, name, res.get(), indent)
+                write_result(directory, name, res.get(), indent, write_raw_data)
                 del running_tasks[name]
-        time.sleep(1)
+        time.sleep(10)
         logging.debug('Watching cycle end.')
-        break
 
 
-def process(infile, outfile, indent):
+def process(infile, outfile, indent, store_logs, write_raw_data,
+            postprocess_command):
     if indent:
         indent = 2
     logging.info('Processing file {}.'.format(infile))
@@ -152,16 +182,38 @@ def process(infile, outfile, indent):
         return
 
     logging.debug('Computing gravity turn...')
-    res = gturn_wrapper('processor', **data)
+    res = gturn_wrapper('processor', pth.dirname(outfile), store_logs, **data)
     logging.debug('Computation finished.')
+    if res is None:
+        logging.error('Failed to compute. No results written.')
+        return
 
     if outfile is None:
         logging.debug('Writing results to stdout')
-        ks.dump(res, sys.stdout, indent=indent)
+        ks.dump(res, sys.stdout, indent=indent, sort_keys=True)
+
+        if write_raw_data:
+            logging.debug('Writing raw results to stdout')
+            bigdata = np.column_stack([res[key]
+                                       for key in sorted(res.keys())])
+            np.savetxt(sys.stdout.buffer, bigdata, delimiter='\t',
+                       header='\t'.join(sorted(res.keys())))
     else:
         logging.debug('Writing results to %s', outfile)
         with open(outfile, mode='w') as f:
-            ks.dump(res, f, indent=indent)
+            ks.dump(res, f, indent=indent, sort_keys=True)
+
+        if write_raw_data:
+            ofile_raw = pth.join(pth.dirname(outfile), 'output-raw.txt')
+            logging.debug('Writing raw results file %s', ofile_raw)
+            bigdata = np.column_stack([res[key]
+                                       for key in sorted(res.keys())])
+            np.savetxt(ofile_raw, bigdata, delimiter='\t',
+                       header='\t'.join(sorted(res.keys())))
+
+    if postprocess_command is not None:
+        subprocess.run(postprocess_command, shell=True,
+                       cwd=pth.dirname(outfile))
     logging.info('Results written.')
 
 
@@ -263,14 +315,56 @@ def main():
                     action='store_true',
                     help='If specified, the output files (regardless of the '
                          'mode or the destination file) will be indented.')
+    ap.add_argument('--write-computation-log',
+                    action='store_true',
+                    help='If specified, the raw log of the computation will be '
+                         'stored to a file. The log is stored in the '
+                         'corresponding task dir in case of server mode, or in '
+                         'the directory of the output file if in direct mode '
+                         'with --output option specified. If in direct mode '
+                         'and --output is not specified, no log will be '
+                         'printed.')
+    ap.add_argument('--write-raw-data',
+                    action='store_true',
+                    help='If specified, the raw data in gnuplot-compatible '
+                         'format will be written to a file. The file is stored '
+                         'in the corresponding task dir in case of server '
+                         'mode, or in the directory of the output file if in '
+                         'direct mode with --output option specified. If in '
+                         'direct mode and --output option is not specified, '
+                         'the data will be printed to standard output after '
+                         'the kOS-JSON data.')
+    ap.add_argument('--postprocess-command',
+                    nargs=1,
+                    help='If specified, this command will be run after the '
+                         'computation has finished. The working directory of '
+                         'the command will be the task dir in case of server '
+                         'mode, directory containing the output file in case '
+                         'of direct mode with --output specified, or the '
+                         'working directory of this program (gturn) in case of '
+                         'direct mode without --output option specified.')
     args = ap.parse_args()
     if args.mode[0] in ['server-sync', 'server-async']:
-        run(args.mode[0] == 'server-async', args.target[0], args.indent)
+        run(async=args.mode[0] == 'server-async',
+            directory=args.target[0],
+            indent=args.indent,
+            store_logs=args.write_computation_log,
+            write_raw_data=args.write_raw_data)
     elif args.mode[0] == 'direct':
         if args.output is None:
-            process(args.target[0], None, args.indent)
+            output = None
         else:
-            process(args.target[0], args.output[0], args.indent)
+            output = args.output[0]
+        if args.postprocess_command is None:
+            postprocess = None
+        else:
+            postprocess = args.postprocess_command[0]
+        process(infile=args.target[0],
+                outfile=output,
+                indent=args.indent,
+                store_logs=args.write_computation_log,
+                write_raw_data=args.write_raw_data,
+                postprocess_command=postprocess)
 
 
 if __name__ == '__main__':
